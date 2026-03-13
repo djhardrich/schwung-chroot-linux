@@ -45,7 +45,7 @@ RUN mkdir -p /etc/pipewire/pipewire.conf.d /run/dbus /tmp /run/user/1000 \
 # Disable PipeWire RT scheduling — Move's audio engine runs SCHED_FIFO at prio 70,
 # and PipeWire competing for RT budget causes the kernel to SIGKILL audio clients.
 # The DSP plugin handles real-time output; PipeWire just needs normal scheduling.
-RUN printf 'context.modules = [\n    { name = libpipewire-module-rt\n      args = {\n          nice.level = 0\n          rt.prio = 0\n          rt.time.soft = -1\n          rt.time.hard = -1\n      }\n      flags = [ ifexists nofail ]\n    }\n]\n' > /etc/pipewire/pipewire.conf.d/no-rt.conf \
+RUN printf 'context.properties = {\n    module.rt = false\n}\n' > /etc/pipewire/pipewire.conf.d/no-rt.conf \
     && mkdir -p /etc/wireplumber/wireplumber.conf.d \
     && cp /etc/pipewire/pipewire.conf.d/no-rt.conf /etc/wireplumber/wireplumber.conf.d/no-rt.conf \
     && echo '# Disabled - RT scheduling conflicts with Move audio engine' > /etc/security/limits.d/25-pw-rlimits.conf

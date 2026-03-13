@@ -64,7 +64,11 @@ chmod 666 "$FIFO_PLAYBACK" 2>/dev/null
 # Launch everything in a single backgrounded subshell so we return immediately
 (
     # Start dbus (needed so PipeWire's RT module queries RTKit and accepts rt.prio=0)
-    chroot "$CHROOT" sh -c "
+    # Use chrt -o 0 to reset scheduling from inherited SCHED_FIFO 70
+    # (MoveOriginal → pw-helper → this subshell). Without this, PipeWire and
+    # all children inherit SCHED_FIFO, exceeding the kernel RT budget and
+    # triggering SIGKILL on audio clients.
+    chrt -o 0 chroot "$CHROOT" sh -c "
         export XDG_RUNTIME_DIR=$RUNTIME_DIR
         if ! pgrep -x dbus-daemon >/dev/null 2>&1; then
             mkdir -p /run/dbus
@@ -78,7 +82,7 @@ chmod 666 "$FIFO_PLAYBACK" 2>/dev/null
     sleep 1
 
     # Start PipeWire as move user (uid 1000) so VNC desktop apps can connect
-    chroot "$CHROOT" su - move -c "
+    chrt -o 0 chroot "$CHROOT" su - move -c "
         export XDG_RUNTIME_DIR=$RUNTIME_DIR
         export DBUS_SESSION_BUS_ADDRESS=unix:path=${RUNTIME_DIR}/dbus-pw
         nohup /usr/bin/pipewire >/dev/null 2>&1 &
@@ -89,7 +93,7 @@ chmod 666 "$FIFO_PLAYBACK" 2>/dev/null
     sleep 2
 
     # Start WirePlumber as move user
-    chroot "$CHROOT" su - move -c "
+    chrt -o 0 chroot "$CHROOT" su - move -c "
         export XDG_RUNTIME_DIR=$RUNTIME_DIR
         export DBUS_SESSION_BUS_ADDRESS=unix:path=${RUNTIME_DIR}/dbus-pw
         nohup /usr/bin/wireplumber >/dev/null 2>&1 &
@@ -104,7 +108,7 @@ chmod 666 "$FIFO_PLAYBACK" 2>/dev/null
     MIDI_OUT_FIFO="/tmp/midi-from-chroot-${SLOT}"
     if [ -e "$MIDI_IN_FIFO" ] && [ -e "$MIDI_OUT_FIFO" ]; then
         chmod 666 "$MIDI_IN_FIFO" "$MIDI_OUT_FIFO" 2>/dev/null
-        chroot "$CHROOT" su - move -c "
+        chrt -o 0 chroot "$CHROOT" su - move -c "
             export XDG_RUNTIME_DIR=$RUNTIME_DIR
             export DBUS_SESSION_BUS_ADDRESS=unix:path=${RUNTIME_DIR}/dbus-pw
             nohup /usr/local/bin/midi-bridge $MIDI_IN_FIFO $MIDI_OUT_FIFO >/dev/null 2>&1 &

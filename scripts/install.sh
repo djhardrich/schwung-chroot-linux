@@ -129,17 +129,9 @@ chmod 644 $REMOTE_CHROOT/etc/profile.d/pipewire.sh"
 echo ""
 echo "--- Installing PipeWire no-RT config ---"
 ssh "root@$DEVICE_HOST" "mkdir -p $REMOTE_CHROOT/etc/pipewire/pipewire.conf.d && cat > $REMOTE_CHROOT/etc/pipewire/pipewire.conf.d/no-rt.conf << 'RTEOF'
-context.modules = [
-    { name = libpipewire-module-rt
-      args = {
-          nice.level = 0
-          rt.prio = 0
-          rt.time.soft = -1
-          rt.time.hard = -1
-      }
-      flags = [ ifexists nofail ]
-    }
-]
+context.properties = {
+    module.rt = false
+}
 RTEOF
 chmod 644 $REMOTE_CHROOT/etc/pipewire/pipewire.conf.d/no-rt.conf
 mkdir -p $REMOTE_CHROOT/etc/wireplumber/wireplumber.conf.d
