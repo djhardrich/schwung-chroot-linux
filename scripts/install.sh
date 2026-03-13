@@ -26,15 +26,69 @@ ssh "root@$DEVICE_HOST" "mkdir -p $REMOTE_MODULE"
 scp -r "$DIST_DIR/"* "root@$DEVICE_HOST:$REMOTE_MODULE/"
 ssh "root@$DEVICE_HOST" "chmod +x $REMOTE_MODULE/start-pw.sh $REMOTE_MODULE/stop-pw.sh && chown -R ableton:users $REMOTE_MODULE"
 
+# ── Install pipewire-midi module ──
+MIDI_MODULE_ID="pipewire-midi"
+MIDI_DIST_DIR="$REPO_ROOT/dist/$MIDI_MODULE_ID"
+REMOTE_MIDI_MODULE="/data/UserData/move-anything/modules/sound_generators/$MIDI_MODULE_ID"
+
+if [ -d "$MIDI_DIST_DIR" ]; then
+    echo ""
+    echo "--- Deploying pipewire-midi module to $REMOTE_MIDI_MODULE ---"
+    ssh "root@$DEVICE_HOST" "mkdir -p $REMOTE_MIDI_MODULE"
+    scp -r "$MIDI_DIST_DIR/"* "root@$DEVICE_HOST:$REMOTE_MIDI_MODULE/"
+    ssh "root@$DEVICE_HOST" "chmod +x $REMOTE_MIDI_MODULE/start-pw.sh $REMOTE_MIDI_MODULE/stop-pw.sh && chown -R ableton:users $REMOTE_MIDI_MODULE"
+fi
+
 # ── Install pw-helper (setuid root helper for chroot management) ──
 PW_HELPER="$REPO_ROOT/build/pw-helper"
 if [ -f "$PW_HELPER" ]; then
     echo ""
     echo "--- Installing pw-helper (setuid root) ---"
-    scp "$PW_HELPER" "root@$DEVICE_HOST:/usr/local/bin/pw-helper"
-    ssh "root@$DEVICE_HOST" "chown root:root /usr/local/bin/pw-helper && chmod 4755 /usr/local/bin/pw-helper"
-    echo "pw-helper installed at /usr/local/bin/pw-helper"
-else
+    ssh "root@$DEVICE_HOST" "mkdir -p /data/UserData/move-anything/bin"
+    scp "$PW_HELPER" "root@$DEVICE_HOST:/data/UserData/move-anything/bin/pw-helper"
+    ssh "root@$DEVICE_HOST" "chown root:root /data/UserData/move-anything/bin/pw-helper && chmod 4755 /data/UserData/move-anything/bin/pw-helper"
+    echo "pw-helper installed at /data/UserData/move-anything/bin/pw-helper"
+fi
+
+# ── Install pw-helper-midi ──
+PW_HELPER_MIDI="$REPO_ROOT/build/pw-helper-midi"
+if [ -f "$PW_HELPER_MIDI" ]; then
+    echo ""
+    echo "--- Installing pw-helper-midi (setuid root) ---"
+    scp "$PW_HELPER_MIDI" "root@$DEVICE_HOST:/data/UserData/move-anything/bin/pw-helper-midi"
+    ssh "root@$DEVICE_HOST" "chown root:root /data/UserData/move-anything/bin/pw-helper-midi && chmod 4755 /data/UserData/move-anything/bin/pw-helper-midi"
+    echo "pw-helper-midi installed at /data/UserData/move-anything/bin/pw-helper-midi"
+fi
+
+# ── Install jack-physical-shim to chroot ──
+JACK_SHIM="$REPO_ROOT/build/jack-physical-shim.so"
+if [ -f "$JACK_SHIM" ]; then
+    echo ""
+    echo "--- Installing jack-physical-shim to chroot ---"
+    ssh "root@$DEVICE_HOST" "mkdir -p $REMOTE_CHROOT/usr/local/lib"
+    scp "$JACK_SHIM" "root@$DEVICE_HOST:$REMOTE_CHROOT/usr/local/lib/jack-physical-shim.so"
+    ssh "root@$DEVICE_HOST" "chmod 644 $REMOTE_CHROOT/usr/local/lib/jack-physical-shim.so"
+    echo "jack-physical-shim installed at $REMOTE_CHROOT/usr/local/lib/jack-physical-shim.so"
+fi
+
+# ── Install pw-jack-physical wrapper ──
+PW_JACK_PHYSICAL="$REPO_ROOT/src/pw-jack-physical"
+if [ -f "$PW_JACK_PHYSICAL" ]; then
+    scp "$PW_JACK_PHYSICAL" "root@$DEVICE_HOST:$REMOTE_CHROOT/usr/local/bin/pw-jack-physical"
+    ssh "root@$DEVICE_HOST" "chmod +x $REMOTE_CHROOT/usr/local/bin/pw-jack-physical"
+fi
+
+# ── Install midi-bridge to chroot ──
+MIDI_BRIDGE="$REPO_ROOT/build/midi-bridge"
+if [ -f "$MIDI_BRIDGE" ]; then
+    echo ""
+    echo "--- Installing midi-bridge to chroot ---"
+    scp "$MIDI_BRIDGE" "root@$DEVICE_HOST:$REMOTE_CHROOT/usr/local/bin/midi-bridge"
+    ssh "root@$DEVICE_HOST" "chmod +x $REMOTE_CHROOT/usr/local/bin/midi-bridge"
+    echo "midi-bridge installed at $REMOTE_CHROOT/usr/local/bin/midi-bridge"
+fi
+
+if [ ! -f "$PW_HELPER" ]; then
     echo ""
     echo "NOTE: pw-helper not found. PipeWire must be started manually as root."
     echo "  ssh root@$DEVICE_HOST"
@@ -131,3 +185,8 @@ echo "Desktop (if installed):"
 echo "  ssh root@$DEVICE_HOST"
 echo "  sh /data/UserData/start-vnc.sh"
 echo "  # Connect VNC client to move.local:5901 (password: everything)"
+echo ""
+echo "PipeWire + MIDI:"
+echo "  Load 'PipeWire + MIDI' as a sound generator in Move Everything."
+echo "  JACK MIDI ports 'Move MIDI In' and 'Move MIDI Out' appear in chroot."
+echo "  Example: pw-jack fluidsynth --midi-driver=jack --audio-driver=jack -r 48000 /usr/share/sounds/sf2/FluidR3_GM.sf2"

@@ -1,0 +1,35 @@
+{
+  "id": "pipewire-midi",
+  "name": "PipeWire + MIDI",
+  "abbrev": "PM",
+  "version": "0.1.0",
+  "description": "PipeWire audio + bidirectional MIDI bridge via chroot",
+  "author": "me-api-explorations",
+  "license": "MIT",
+  "ui": "ui.js",
+  "ui_chain": "ui.js",
+  "dsp": "dsp.so",
+  "api_version": 2,
+  "capabilities": {
+    "audio_out": true,
+    "audio_in": false,
+    "midi_in": true,
+    "midi_out": true,
+    "chainable": true,
+    "component_type": "sound_generator",
+    "chain_params": [
+      {
+        "key": "gain",
+        "name": "Gain",
+        "type": "float",
+        "min": 0.0,
+        "max": 2.0,
+        "default": 1.0,
+        "step": 0.05
+      }
+    ]
+  },
+  "defaults": {
+    "gain": 1.0
+  }
+}

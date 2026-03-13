@@ -1,0 +1,7 @@
+#!/bin/sh
+# pw-jack-physical — Launch a JACK app with physical port shim
+# Use this instead of pw-jack for apps that require physical ports
+# (Yoshimi, some versions of Ardour, etc.)
+#
+# Usage: pw-jack-physical yoshimi -J -j
+exec env LD_PRELOAD=/usr/local/lib/jack-physical-shim.so pw-jack "$@"

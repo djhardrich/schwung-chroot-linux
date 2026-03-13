@@ -1,8 +1,15 @@
 /*
- * pipewire_plugin.c — Move Everything DSP plugin for PipeWire FIFO bridge
+ * pipewire_midi_plugin.c — Move Everything DSP plugin for PipeWire FIFO bridge
+ *                          with bidirectional MIDI FIFO bridge
  *
  * Audio path:
  *   PipeWire sink → /tmp/pw-to-move-<slot> (FIFO) → ring buffer → render_block()
+ *
+ * MIDI path (Move → chroot):
+ *   on_midi() → /tmp/midi-to-chroot-<slot> (FIFO, length-prefixed frames)
+ *
+ * MIDI path (chroot → Move):
+ *   /tmp/midi-from-chroot-<slot> (FIFO) → pump_midi_out() → host->send_midi_internal()
  *
  * The plugin runs as user 'ableton'. PipeWire chroot requires root, so
  * start/stop scripts are invoked via sudo (Move has passwordless sudo for root).
@@ -84,6 +91,16 @@ typedef struct {
     bool pw_running;
     bool receiving_audio;
     uint64_t last_audio_ms;
+
+    /* MIDI bridge FIFOs */
+    char fifo_midi_in_path[256];   /* Move → chroot */
+    char fifo_midi_out_path[256];  /* chroot → Move */
+    int fifo_midi_in_fd;           /* plugin writes, bridge reads */
+    int fifo_midi_out_fd;          /* bridge writes, plugin reads */
+
+    /* Outbound MIDI accumulation buffer (handles partial FIFO reads) */
+    uint8_t midi_out_buf[4096];
+    uint16_t midi_out_buf_len;
 } pw_instance_t;
 
 static int g_instance_counter = 0;
@@ -196,6 +213,73 @@ static void close_fifo(pw_instance_t *inst) {
     }
 }
 
+/* ── MIDI FIFO Management ────────────────────────────── */
+
+static int create_midi_fifos(pw_instance_t *inst) {
+    const char *paths[2];
+    int *fds[2];
+    int i;
+
+    if (!inst) return -1;
+
+    snprintf(inst->fifo_midi_in_path, sizeof(inst->fifo_midi_in_path),
+             "/tmp/midi-to-chroot-%d", inst->slot);
+    snprintf(inst->fifo_midi_out_path, sizeof(inst->fifo_midi_out_path),
+             "/tmp/midi-from-chroot-%d", inst->slot);
+
+    paths[0] = inst->fifo_midi_in_path;
+    paths[1] = inst->fifo_midi_out_path;
+    fds[0] = &inst->fifo_midi_in_fd;
+    fds[1] = &inst->fifo_midi_out_fd;
+
+    for (i = 0; i < 2; i++) {
+        struct stat st;
+
+        if (unlink(paths[i]) != 0 && errno != ENOENT) {
+            if (stat(paths[i], &st) == 0 && S_ISFIFO(st.st_mode)) {
+                *fds[i] = open(paths[i], O_RDWR | O_NONBLOCK);
+                if (*fds[i] >= 0) {
+                    pw_log("create_midi_fifos: reusing existing FIFO");
+                    continue;
+                }
+            }
+            set_error(inst, "cannot remove stale MIDI FIFO");
+            return -1;
+        }
+
+        if (mkfifo(paths[i], 0666) != 0) {
+            set_error(inst, "mkfifo MIDI failed");
+            return -1;
+        }
+
+        *fds[i] = open(paths[i], O_RDWR | O_NONBLOCK);
+        if (*fds[i] < 0) {
+            set_error(inst, "open MIDI FIFO failed");
+            (void)unlink(paths[i]);
+            return -1;
+        }
+    }
+
+    pw_log("create_midi_fifos: OK");
+    return 0;
+}
+
+static void close_midi_fifos(pw_instance_t *inst) {
+    if (!inst) return;
+    if (inst->fifo_midi_in_fd >= 0) {
+        close(inst->fifo_midi_in_fd);
+        inst->fifo_midi_in_fd = -1;
+    }
+    if (inst->fifo_midi_out_fd >= 0) {
+        close(inst->fifo_midi_out_fd);
+        inst->fifo_midi_out_fd = -1;
+    }
+    if (inst->fifo_midi_in_path[0] != '\0')
+        (void)unlink(inst->fifo_midi_in_path);
+    if (inst->fifo_midi_out_path[0] != '\0')
+        (void)unlink(inst->fifo_midi_out_path);
+}
+
 /* ── Pipe Pump (FIFO → Ring Buffer) ──────────────────── */
 
 static void pump_pipe(pw_instance_t *inst) {
@@ -247,6 +331,45 @@ static void pump_pipe(pw_instance_t *inst) {
     }
 }
 
+/* ── MIDI Outbound Pump (chroot → Move) ──────────────── */
+
+static void pump_midi_out(pw_instance_t *inst) {
+    uint8_t tmp[512];
+    if (!inst || inst->fifo_midi_out_fd < 0) return;
+
+    while (1) {
+        size_t space = sizeof(inst->midi_out_buf) - inst->midi_out_buf_len;
+        if (space == 0) break;
+
+        ssize_t n = read(inst->fifo_midi_out_fd, tmp,
+                         space < sizeof(tmp) ? space : sizeof(tmp));
+        if (n <= 0) break;
+
+        memcpy(inst->midi_out_buf + inst->midi_out_buf_len, tmp, (size_t)n);
+        inst->midi_out_buf_len += (uint16_t)n;
+    }
+
+    size_t pos = 0;
+    while (pos + 2 <= inst->midi_out_buf_len) {
+        uint16_t msg_len = (uint16_t)inst->midi_out_buf[pos]
+                         | ((uint16_t)inst->midi_out_buf[pos + 1] << 8);
+        if (msg_len == 0) { pos += 2; continue; }
+        if (pos + 2 + msg_len > inst->midi_out_buf_len) break;
+
+        if (g_host && g_host->send_midi_internal)
+            g_host->send_midi_internal(inst->midi_out_buf + pos + 2, msg_len);
+        pos += 2 + msg_len;
+    }
+
+    if (pos > 0 && pos < inst->midi_out_buf_len) {
+        memmove(inst->midi_out_buf, inst->midi_out_buf + pos,
+                inst->midi_out_buf_len - pos);
+        inst->midi_out_buf_len -= (uint16_t)pos;
+    } else if (pos >= inst->midi_out_buf_len) {
+        inst->midi_out_buf_len = 0;
+    }
+}
+
 /* ── PipeWire Chroot Daemon ───────────────────────────── */
 
 static void start_pw_chroot(pw_instance_t *inst) {
@@ -254,29 +377,33 @@ static void start_pw_chroot(pw_instance_t *inst) {
     if (!inst) return;
 
     /* Plugin runs as 'ableton' but chroot/mount need root.
-     * Use setuid pw-helper binary installed at /usr/local/bin.
+     * Use setuid pw-helper-midi binary installed at /usr/local/bin.
      * Fork + exec to avoid blocking the audio thread. */
     snprintf(slot_str, sizeof(slot_str), "%d", inst->slot);
 
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
-        /* Close FIFO fd so child/PipeWire don't inherit it */
+        /* Close all FIFOs so child/PipeWire don't inherit them */
         if (inst->fifo_playback_fd >= 0)
             close(inst->fifo_playback_fd);
+        if (inst->fifo_midi_in_fd >= 0)
+            close(inst->fifo_midi_in_fd);
+        if (inst->fifo_midi_out_fd >= 0)
+            close(inst->fifo_midi_out_fd);
         /* Close log fd */
         if (g_log_fd >= 0)
             close(g_log_fd);
         int fd = open("/tmp/pw-start.log", O_WRONLY | O_CREAT | O_TRUNC, 0666);
         if (fd >= 0) { dup2(fd, 1); dup2(fd, 2); close(fd); }
-        execl("/data/UserData/move-anything/bin/pw-helper", "pw-helper", "start",
+        execl("/data/UserData/move-anything/bin/pw-helper-midi", "pw-helper-midi", "start",
               inst->fifo_playback_path, slot_str, (char *)NULL);
         _exit(127);
     }
 
     /* Don't wait for child — it runs in background */
     inst->pw_running = true;
-    pw_log("PipeWire chroot launch requested (via pw-helper)");
+    pw_log("PipeWire chroot launch requested (via pw-helper-midi)");
 }
 
 static void stop_pw_chroot(pw_instance_t *inst) {
@@ -284,7 +411,7 @@ static void stop_pw_chroot(pw_instance_t *inst) {
     if (!inst) return;
 
     snprintf(cmd, sizeof(cmd),
-             "/data/UserData/move-anything/bin/pw-helper stop %d >/dev/null 2>&1",
+             "/data/UserData/move-anything/bin/pw-helper-midi stop %d >/dev/null 2>&1",
              inst->slot);
     (void)system(cmd);
 
@@ -336,6 +463,9 @@ static void *v2_create_instance(const char *module_dir, const char *json_default
              module_dir ? module_dir : ".");
     inst->gain = 1.0f;
     inst->fifo_playback_fd = -1;
+    inst->fifo_midi_in_fd = -1;
+    inst->fifo_midi_out_fd = -1;
+    inst->midi_out_buf_len = 0;
     (void)json_defaults;
 
     /* Heap-allocate ring buffer */
@@ -353,6 +483,11 @@ static void *v2_create_instance(const char *module_dir, const char *json_default
         return NULL;
     }
 
+    if (create_midi_fifos(inst) != 0) {
+        pw_log("create_instance: MIDI FIFO failed (continuing without MIDI)");
+        /* Non-fatal — audio still works */
+    }
+
     /* Start PipeWire in background — don't block or fail on error */
     start_pw_chroot(inst);
 
@@ -366,6 +501,7 @@ static void v2_destroy_instance(void *instance) {
     pw_log("destroy_instance");
 
     stop_pw_chroot(inst);
+    close_midi_fifos(inst);
     close_fifo(inst);
 
     free(inst->ring);
@@ -374,7 +510,23 @@ static void v2_destroy_instance(void *instance) {
 }
 
 static void v2_on_midi(void *instance, const uint8_t *msg, int len, int source) {
-    (void)instance; (void)msg; (void)len; (void)source;
+    pw_instance_t *inst = (pw_instance_t *)instance;
+    if (!inst || !msg || len <= 0 || len > 65535) return;
+    if (inst->fifo_midi_in_fd < 0) return;
+
+    /* Cap at practical size for stack allocation */
+    if (len > 4096) return;
+
+    /* 2-byte LE length prefix + raw MIDI bytes */
+    uint8_t frame[4098];
+    uint16_t ulen = (uint16_t)len;
+    frame[0] = (uint8_t)(ulen & 0xFF);
+    frame[1] = (uint8_t)((ulen >> 8) & 0xFF);
+    memcpy(frame + 2, msg, len);
+
+    /* Non-blocking write — drop if FIFO full (acceptable for MIDI) */
+    (void)write(inst->fifo_midi_in_fd, frame, 2 + len);
+    (void)source;
 }
 
 static void v2_set_param(void *instance, const char *key, const char *val) {
@@ -434,6 +586,7 @@ static void v2_render_block(void *instance, int16_t *out_interleaved_lr, int fra
 
     check_pw_alive(inst);
     pump_pipe(inst);
+    pump_midi_out(inst);
 
     got = ring_pop(inst, out_interleaved_lr, needed);
 
