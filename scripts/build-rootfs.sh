@@ -23,8 +23,9 @@ else
     echo "=== Building Debian sid arm64 rootfs with PipeWire ==="
 fi
 
-echo "NOTE: Requires Docker with QEMU binfmt_misc for arm64 emulation."
+echo "NOTE: On x86 hosts, requires QEMU binfmt_misc for arm64 emulation."
 echo "      Run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes"
+echo "      (Apple Silicon builds arm64 natively — skip the QEMU step.)"
 echo ""
 
 mkdir -p "$REPO_ROOT/dist"
