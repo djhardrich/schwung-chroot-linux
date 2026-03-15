@@ -11,6 +11,9 @@ if [ ! -f /.dockerenv ]; then
     echo "=== Building Docker image ==="
     docker build -t "$IMAGE_NAME" -f "$SCRIPT_DIR/Dockerfile" "$REPO_ROOT"
 
+    echo "=== Cleaning previous build ==="
+    rm -rf "$REPO_ROOT/build" "$REPO_ROOT/dist"
+
     echo "=== Running build inside container ==="
     docker run --rm \
         -v "$REPO_ROOT:/build" \
@@ -60,16 +63,18 @@ chmod +x build/module/start-pw.sh build/module/stop-pw.sh \
 
 # Include helpers, shims, and midi-bridge in module package
 mkdir -p build/module/bin build/module/chroot-lib
-cp build/pw-helper              build/module/bin/
-cp build/midi-bridge            build/module/bin/
-cp build/jack-physical-shim.so  build/module/chroot-lib/
+cat build/pw-helper              > build/module/bin/pw-helper
+cat build/midi-bridge            > build/module/bin/midi-bridge
+cat build/jack-physical-shim.so  > build/module/chroot-lib/jack-physical-shim.so
 cp src/pw-jack-physical         build/module/chroot-lib/
-chmod +x build/module/chroot-lib/pw-jack-physical
+chmod +x build/module/bin/pw-helper build/module/bin/midi-bridge \
+         build/module/chroot-lib/pw-jack-physical
 
 # ── Package ──
+rm -rf dist
 mkdir -p dist
-rm -rf dist/pipewire
-cp -r build/module dist/pipewire
+tar -cf - -C build module | tar -xf - -C dist
+mv dist/module dist/pipewire
 
 (cd dist && tar -czvf "${OUTPUT_BASENAME}.tar.gz" pipewire/)
 

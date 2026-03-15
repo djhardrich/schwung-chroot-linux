@@ -30,37 +30,40 @@ MIDI is transported over FIFOs using a 2-byte little-endian length-prefixed fram
 ## Prerequisites
 
 - Docker (with BuildKit)
-- QEMU binfmt for arm64 emulation (rootfs build only)
-- SSH access to Move (`root@move.local` or IP)
+- QEMU binfmt for arm64 emulation (rootfs build on x86 hosts only — Apple Silicon builds arm64 natively)
+- SSH access to Move (`root@move.local` and `ableton@move.local`)
 - [Move Everything](https://github.com/charlesvestal/move-everything) installed on Move
 
 ## Build
 
 ```bash
 # Cross-compile DSP plugin + package module
+# (automatically cleans previous build artifacts)
 ./scripts/build.sh
 
-# One-time: register QEMU binfmt for arm64 emulation
-docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+# One-time on x86 hosts: register QEMU binfmt for arm64 emulation
+# (skip this on Apple Silicon — Docker runs arm64 natively)
+# docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 
 # Build minimal rootfs (PipeWire only, ~120MB)
 ./scripts/build-rootfs.sh
 
 # Build desktop rootfs (XFCE + VNC + PipeWire, ~500MB)
 ./scripts/build-rootfs.sh --desktop
-
-# Clean build artifacts
-./scripts/clean.sh
 ```
 
 ## Install
 
 ```bash
 # Deploy to Move (module + rootfs + convenience scripts)
+# Replace move.local with your device's IP address if mDNS is not available
+./scripts/install.sh
+
+# Or specify a custom host
 DEVICE_HOST=192.168.1.199 ./scripts/install.sh
 ```
 
-The installer deploys whichever rootfs was built (prefers desktop if both exist).
+The installer deploys whichever rootfs was built (prefers desktop if both exist). Module files and convenience scripts are deployed as `ableton@`; only the setuid helper, rootfs extraction, and chroot configuration require `root@`.
 
 ## Usage
 
