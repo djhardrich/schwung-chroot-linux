@@ -65,6 +65,18 @@ DEVICE_HOST=192.168.1.199 ./scripts/install.sh
 
 The installer deploys whichever rootfs was built (prefers desktop if both exist). Module files and convenience scripts are deployed as `ableton@`; only the setuid helper, rootfs extraction, and chroot configuration require `root@`.
 
+## Uninstall
+
+```bash
+# Remove all PipeWire files from Move (module, chroot, helper, scripts)
+./scripts/uninstall.sh
+
+# Or specify a custom host
+DEVICE_HOST=192.168.1.199 ./scripts/uninstall.sh
+```
+
+This stops any running PipeWire processes, unmounts chroot bind mounts, and removes the module, chroot, pw-helper binary, and convenience scripts.
+
 ## Usage
 
 ### Audio Only (PipeWire module)
@@ -311,6 +323,7 @@ chroot /data/UserData/pw-chroot su - move
 | Desktop rootfs | `scripts/Dockerfile.rootfs-desktop` |
 | Build script | `scripts/build.sh` |
 | Install script | `scripts/install.sh` |
+| Uninstall script | `scripts/uninstall.sh` |
 
 ## Audio Specs
 
