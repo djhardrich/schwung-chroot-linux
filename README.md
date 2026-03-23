@@ -1,4 +1,4 @@
-# mschwung-pipewire
+# schwung-chroot-linux
 
 A [Schwung](https://github.com/charlesvestal/schwung) sound generator module that bridges PipeWire audio and MIDI to the Ableton Move. Run any ALSA, JACK, or PipeWire app inside a Debian chroot and hear it through Move's speakers — with full bidirectional MIDI.
 
