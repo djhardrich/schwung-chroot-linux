@@ -1,6 +1,6 @@
-# move-everything-pipewire
+# mschwung-pipewire
 
-A [Move Everything](https://github.com/charlesvestal/move-everything) sound generator module that bridges PipeWire audio and MIDI to the Ableton Move. Run any ALSA, JACK, or PipeWire app inside a Debian chroot and hear it through Move's speakers — with full bidirectional MIDI.
+A [Schwung](https://github.com/charlesvestal/schwung) sound generator module that bridges PipeWire audio and MIDI to the Ableton Move. Run any ALSA, JACK, or PipeWire app inside a Debian chroot and hear it through Move's speakers — with full bidirectional MIDI.
 
 - **PipeWire** — audio bridge with bidirectional MIDI between Move and the chroot
 
@@ -32,7 +32,7 @@ MIDI is transported over FIFOs using a 2-byte little-endian length-prefixed fram
 - Docker (with BuildKit)
 - QEMU binfmt for arm64 emulation (rootfs build on x86 hosts only — Apple Silicon builds arm64 natively)
 - SSH access to Move (`root@move.local` and `ableton@move.local`)
-- [Move Everything](https://github.com/charlesvestal/move-everything) installed on Move
+- [Schwung](https://github.com/charlesvestal/schwung) installed on Move
 
 ## Build
 
@@ -69,7 +69,7 @@ The installer deploys whichever rootfs was built (prefers desktop if both exist)
 
 ### Audio Only (PipeWire module)
 
-1. Load **PipeWire** as a sound generator in a Move Everything shadow chain slot
+1. Load **PipeWire** as a sound generator in a Schwung shadow chain slot
 2. PipeWire starts automatically in the chroot
 3. SSH into Move and enter the chroot:
 
@@ -91,7 +91,7 @@ guitarix --jack
 
 ### Audio + MIDI (PipeWire + MIDI module)
 
-1. Load **PipeWire** as a sound generator in a Move Everything shadow chain slot
+1. Load **PipeWire** as a sound generator in a Schwung shadow chain slot
 2. PipeWire and the MIDI bridge start automatically
 3. SSH into Move and enter the chroot:
 
@@ -143,7 +143,7 @@ The desktop rootfs includes XFCE and a VNC server, giving you a full Linux deskt
 ### Quick Start
 
 1. Build and deploy the desktop rootfs (see [Build](#build) and [Install](#install))
-2. Open Move Everything on Move and load **PipeWire** (audio only) or **PipeWire + MIDI** (audio + MIDI) as a sound generator
+2. Open Schwung on Move and load **PipeWire** (audio only) or **PipeWire + MIDI** (audio + MIDI) as a sound generator
 3. SSH into Move and start VNC:
 
 ```bash
@@ -323,7 +323,7 @@ Bidirectional MIDI over FIFOs with 2-byte little-endian length-prefixed framing.
 
 ## AI Assistance Disclaimer
 
-This module is part of Move Everything and was developed with AI assistance, including Claude and other AI assistants.
+This module is part of Schwung and was developed with AI assistance, including Claude and other AI assistants.
 
 All architecture, implementation, and release decisions are reviewed by human maintainers.
 AI-assisted content may still contain errors, so please validate functionality, security, and license compatibility before production use.
