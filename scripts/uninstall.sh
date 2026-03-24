@@ -2,9 +2,9 @@
 set -euo pipefail
 
 DEVICE_HOST="${DEVICE_HOST:-move.local}"
-REMOTE_MODULE="/data/UserData/move-anything/modules/sound_generators/pipewire"
+REMOTE_MODULE="/data/UserData/schwung/modules/sound_generators/pipewire"
 REMOTE_CHROOT="/data/UserData/pw-chroot"
-REMOTE_BIN="/data/UserData/move-anything/bin/pw-helper"
+REMOTE_BIN="/data/UserData/schwung/bin/pw-helper"
 
 USER_SSH="ableton@$DEVICE_HOST"
 ROOT_SSH="root@$DEVICE_HOST"
